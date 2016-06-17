@@ -1,0 +1,163 @@
+---
+registrar:
+    course: "CSC 161"
+    title: "The Art of Programming"
+    term: "SUMMER_2016"
+    crn: 
+    url: 
+    labs:
+        - &lab1
+        - &lab2
+        - &lab3
+        - &lab4
+
+    workshops:
+        - &workshop1
+        - &workshop2
+        - &workshop3
+        - &workshop4
+        - &workshop5
+        - &workshop6
+        - &workshop7
+        - &workshop8
+        - &workshop9
+        - &workshop10
+
+    blackboard:
+        course_id:
+
+admin:
+    lab_TAs:
+        *lab1:
+            - name: ""
+              email: ""
+              netid: ""
+
+            - name: ""
+              email: ""
+              netid: ""
+
+        *lab2:
+            - name: ""
+              email: ""
+              netid: ""
+
+            - name: ""
+              email: ""
+              netid: ""
+
+        *lab3:
+            - name: ""
+              email: ""
+              netid: ""
+
+            - name: ""
+              email: ""
+              netid: ""
+
+        *lab4:
+            - name: ""
+              email: ""
+              netid: ""
+
+            - name: ""
+              email: ""
+              netid: ""
+                  
+    workshop_leaders:
+        *workshop1:
+            name: ""
+            email: ""
+            netid: ""
+
+        *workshop2:
+            name: ""
+            email: ""
+            netid: ""
+
+        *workshop3:
+            name: ""
+            email: ""
+            netid: ""
+
+        *workshop4:
+            name: ""
+            email: ""
+            netid: ""
+
+        *workshop5:
+            name: ""
+            email: ""
+            netid: ""
+
+        *workshop6:
+            name: ""
+            email: ""
+            netid: ""
+
+        *workshop7:
+            name: ""
+            email: ""
+            netid: ""
+
+        *workshop8:
+            name: ""
+            email: ""
+            netid: ""
+
+        *workshop9:
+            name: ""
+            email: ""
+            netid: ""
+
+        *workshop10:
+            name: ""
+            email: ""
+            netid: ""
+
+solns_htaccess:
+    output_file: "build/html/private/.htaccess"
+    ldap_url:
+
+ta_htaccess:
+    output_file: "build/html/private/labs/.htaccess"
+    ldap_url:
+
+wsl_htaccess:
+    output_file: "build/html/private/workshops/.htaccess"
+    ldap_url:
+
+ta_mapper:
+    output_file: "source/lab-tas.txt"
+
+wsl_mapper:
+    output_file: "source/ws-leaders.txt"
+
+gen_sched:
+    output_file: "source/class_schedule.csv"
+    session_start: !!python/object/apply:datetime.date [2016, 5, 16]
+    session_end: !!python/object/apply:datetime.date [2016, 6, 24]
+
+courselib:
+    user: ""
+    passwd: ""
+    encoded_pw: ""
+    encoded_pw_unicode: ""
+    login_url: ""
+    logout_url: ""
+    bb_edit_enroll_url: ""
+    bb_list_content_url: ""
+    bb_manage_assign_url: ""
+
+roster:
+    user: ""
+    passwd: ""
+    encoded_pw: ""
+    encoded_pw_unicode: ""
+    landing_url: ""
+    login_url: ""
+    logout_url: ""
+    access_base_url: ""
+    access_terms_url: ""
+    access_courses_url: ""
+    access_roster_url: ""
