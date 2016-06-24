@@ -28,7 +28,7 @@ people = []
 for ta in config['admin']['lab_TAs'].values():
     people += ta
 
-vcard_f = open("csc161-tas.vcard", 'w')
+vcard_f = open(config['gen_vcard']['output_dir'] + "csc161-tas.vcard", 'w')
 
 for person in people:
     if not person['name']:
@@ -41,7 +41,7 @@ vcard_f.close()
 
 # Make vcard for workshop leaders
 people = config['admin']['workshop_leaders'].values()
-vcard_f = open("csc161-wsl.vcard", 'w')
+vcard_f = open(config['gen_vcard']['output_dir'] + "csc161-wsl.vcard", 'w')
 
 for person in people:
     if not person['name']:

@@ -148,6 +148,8 @@ courselib:
     bb_edit_enroll_url: ""
     bb_list_content_url: ""
     bb_manage_assign_url: ""
+    bb_download_assign_url: ""
+    bb_gradebook_url: ""
 
 roster:
     user: ""

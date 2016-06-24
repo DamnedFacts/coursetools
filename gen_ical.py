@@ -138,6 +138,6 @@ for ws_crn in config['registrar']['workshops']:
     event.add('RRULE', recur)
     cal.add_component(event)
 
-f = open('csc161-cal.ics', 'wb')
+f = open(config['gen_ical']['output_dir'] + 'csc161-cal.ics', 'wb')
 f.write(cal.to_ical())
 f.close()
