@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
 
 from courselib.instructor_access import InstructorAccess
-from yaml import load
+from config import config
+import os
+
+output = config["wsl_mapper"]["output_file"]
+output_dir = os.path.dirname(output)
 
 col1_w = 38
 col2_w = 38
 col3_w = 47
-
-try:
-    from yaml import CLoader as Loader
-except ImportError:
-    from yaml import Loader
-
-with open('config.yaml') as f:
-    config = load(f, Loader=Loader)
 
 
 def output_rst(courses, crn, leader, students, output, config):
@@ -21,11 +17,12 @@ def output_rst(courses, crn, leader, students, output, config):
     names = [val['name'] for val in students.values()]
     names.sort()
 
-    joined = " ".join([ws['days'], ws['time'], ws['bldg'], ws['room']])
+    joined = " ".join([ws['days'], ws['time'], ws['bldg'],
+                       ws['room'], "(" + str(crn) + ")"])
     print("{s:{col1}s}".format(s=joined, col1=col1_w+1), end="",
           file=output)
 
-    stud_list_name = "source/ws-{}.rst".format(ws['crn'])
+    stud_list_name = output_dir + "/ws-{}.rst".format(ws['crn'])
     with open(stud_list_name, 'w') as student_list_file:
         title_str = "Student List" " \
             for *{0}* ({1})".format(ws['course_title'].title(),
@@ -58,6 +55,13 @@ def main():
     access.login()
     courses = access.course_query(term)
 
+    # Retrieve full student list for lecture(s) CRN.
+    students_lecture = {}
+    for lecture_crn in config['registrar']['crn']:
+        students_dict = access.roster_query(term, lecture_crn)[lecture_crn]
+        students_lecture = {**students_lecture, **students_dict}
+    lecture_keys = set(students_lecture.keys())
+
     with open(config["wsl_mapper"]["output_file"], 'w') as output:
         print("{} {} {}".format("="*col1_w, "="*col2_w, "="*col3_w),
               file=output)
@@ -74,14 +78,20 @@ def main():
             if not ws_crn:
                 continue
 
+            if ws_crn not in courses:
+                print("Workshop CRN {0} not found. Skipping…".format(ws_crn))
+                continue
+
             wsl = config['admin']['workshop_leaders'][ws_crn]
 
-            students_lists = access.roster_query(term, ws_crn)
-            students = {}
-            for s in students_lists.values():
-                students = {**students, **s}
+            students_ws = access.roster_query(term, ws_crn)[ws_crn]
+            ws_keys = set(students_ws.keys())
+            for key in (ws_keys - lecture_keys):
+                print("Student {0} is in ws {1} but not in lecture section."
+                      .format(students_ws[key]['name'], ws_crn))
+                del students_ws[key]
 
-            output_rst(courses, ws_crn, wsl, students, output, config)
+            output_rst(courses, ws_crn, wsl, students_ws, output, config)
 
         print("{} {} {}".format("="*col1_w, "="*col2_w, "="*col3_w),
               file=output)

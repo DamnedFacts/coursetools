@@ -3,6 +3,8 @@
 from bs4 import BeautifulSoup
 import requests
 import sys
+import datetime
+import re
 
 from config import config
 
@@ -78,20 +80,29 @@ class InstructorAccess:
     roster for each.
     """
     def roster_query(self, term, crn):
-        import datetime
         today = datetime.datetime.now()
 
         term = term.replace("_", " ").split()[0] + ' Semester'
+
+        if re.match("FALL", term):
+            academicyear = str(today.year) + str(today.year + 1)
+        elif re.match("SPRING", term):
+            academicyear = str(today.year - 1) + str(today.year)
+        elif re.match("SUMMER", term):
+            academicyear = str(today.year - 1) + str(today.year)
+        else:
+            print("Unknown term '{0}': exiting.".format(term))
+            sys.exit(1)
 
         payload = dict(
             rosterType=2,
             rosterMonth=today.month,
             rosterDay=today.day,
-            rosterYear=2015,
+            rosterYear=today.year,
             rosterLoc="screen",
             CRN=crn,
             semester=term,
-            year=20152016,
+            year=academicyear,
             rosterEmail="nobody",
             r=713
         )
@@ -115,11 +126,14 @@ class InstructorAccess:
                                        {"class": "rosterHeaderDisplay"})
         rosters = zip(roster_headers, roster_tables)
 
+        records_dict = {}
+
+        if re.findall(".*No students found.*", roster_page.text):
+            return records_dict
+
         if not roster_tables:
             print("Roster error: retrieval returned 'None' as a response.")
             sys.exit(1)
-
-        records_dict = {}
 
         for header, roster in rosters:
             records = {}  # store all of the records in this list
@@ -195,8 +209,8 @@ class InstructorAccess:
     def course_query(self, term):
         # Session metadata needed viewing Instructor Access, part 2
         term = term.replace("_", " ")
-        response = self.session.get(config['roster']['access_courses_url']
-                                    + term)
+        response = self.session.get(config['roster']['access_courses_url'] +
+                                    term)
 
         if response.status_code != 200:
             raise(ConnectionError, "Received a HTTP status code of {}"
@@ -260,8 +274,8 @@ class InstructorAccess:
 
     def permission_code_query(self, term):
         # Session metadata needed viewing Instructor Access, part 2
-        response = self.session.get(config['roster']['access_courses_url']
-                                    + term.replace("_", " "))
+        response = self.session.get(config['roster']['access_courses_url'] +
+                                    term.replace("_", " "))
 
         if response.status_code != 200:
             raise(ConnectionError, "Received a HTTP status code of {}"
@@ -274,7 +288,7 @@ class InstructorAccess:
         soup = BeautifulSoup(course_page.text, "html.parser")
         permisson_code_p = soup.select("#sem{0} td p".format(term))
         import re
-        pattern = re.compile(r"My Web Registration Permission Code: (1246)")
+        pattern = re.compile(r"My Web Registration Permission Code: (\d*)")
         m = pattern.search(permisson_code_p[0].text)
 
         if not permisson_code_p:

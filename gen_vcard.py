@@ -50,4 +50,16 @@ for person in people:
     card = make_card(person)
     vcard_f.write(card.serialize())
 
+# Make vcards for graduate TAs
+# Make vcard for workshop leaders
+people = config['admin']['grad_TAs']
+vcard_f = open(config['gen_vcard']['output_dir'] + "csc161-gradtas.vcard", 'w')
+
+for person in people:
+    if not person['name']:
+        continue
+
+    card = make_card(person)
+    vcard_f.write(card.serialize())
+
 vcard_f.close()

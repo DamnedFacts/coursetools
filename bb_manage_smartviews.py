@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+
+from courselib.instructor_access import InstructorAccess
+from courselib.blackboard import BlackBoard
+from config import config
+
+
+def wsl_partition(courses, crn, leader, students):
+    ws = courses[crn]
+    names = [(val['stud_id'], val['name']) for val in students.values()]
+    names.sort(key=lambda x: x[1])
+    names_dict = {}
+
+    names_dict[leader['name']] = {'students': [],
+                                  'desc': ""}
+
+    for name in names:
+        names_dict[leader['name']]['students'].append(name[0])
+
+    sect_range = "{1} students".format(ws['crn'], len(names))
+    names_dict[leader['name']]['desc'] = sect_range
+
+    return names_dict
+
+
+def ta_partition(lab, lab_tas, students):
+    names = [(val['stud_id'], val['name']) for val in students.values()]
+    names.sort(key=lambda x: x[1])
+    divider = len(lab_tas)
+    chunk = len(names)//divider
+    idx1 = 1
+    idx2 = 1
+    pos = 0
+
+    names_dict = {}
+
+    if chunk == 0:
+        chunk = 1
+
+    for i, ta in enumerate(lab_tas):
+        s1 = names[pos:pos+chunk][0][1]   # First name in section
+        s2 = names[pos:pos+chunk][-1][1]  # Last name in section
+
+        try:
+            s3 = names[pos+chunk][1]  # Name starting next range
+            idx2 = [i for i in range(len(s3 if s2 > s3 else s2)) if s2[i] !=
+                    s3[i]][0] + 1
+        except IndexError:
+            pass
+
+        names_dict[ta['name']] = {'students': [],
+                                  'desc': ""}
+        for name in names[pos:pos+chunk]:
+            names_dict[ta['name']]['students'].append(name[0])
+
+        sect_range = "{0} - {1}, {2} students"\
+            .format(s1[0:idx1],
+                    s2[0:idx2],
+                    len(names[pos:pos+chunk]))
+        names_dict[ta['name']]['desc'] = sect_range
+
+        pos += chunk
+        rem = len(names) - pos
+        if rem - pos < chunk:
+            chunk += rem
+        divider -= 1
+        idx1 = idx2
+        idx2 = 1
+
+    return names_dict
+
+
+def main():
+    print("Create Smart Views for Workshop Leaders and "
+          "lab TAs for course id {0}. \n"
+          .format(config['registrar']['blackboard']['course_id']))
+
+    term = config['registrar']['term']
+
+    bb = BlackBoard()
+    bb.login()
+
+    access = InstructorAccess()
+    access.login()
+
+    courses = access.course_query(term)
+
+    # Retrieve full student list for lecture(s) CRN.
+    students_lecture = {}
+    for lecture_crn in config['registrar']['crn']:
+        students_dict = access.roster_query(term, lecture_crn)[lecture_crn]
+        students_lecture = {**students_lecture, **students_dict}
+    lecture_keys = set(students_lecture.keys())
+
+    for lab_crn in config['registrar']['labs']:
+        if not lab_crn:
+            continue
+
+        if lab_crn not in courses:
+            print("Lab session CRN {0} not found. Skipping…".format(lab_crn))
+            continue
+
+        tas = config['admin']['lab_TAs'][lab_crn]
+
+        students_lab = access.roster_query(term, lab_crn)[lab_crn]
+        lab_keys = set(students_lab.keys())
+        for key in (lab_keys - lecture_keys):
+            print("Student {0} is in lab {1} but not in lecture section."
+                  .format(students_lab[key]['name'], lab_crn))
+            del students_lab[key]
+
+        names_dict = ta_partition(courses[lab_crn], tas, students_lab)
+        courses = access.course_query(term)
+        for name, vals in names_dict.items():
+            print("Creating Smart View for lab TA: {0}…".format(name))
+            bb.create_smartview("Lab: {0}".format(name),
+                                "{2} {3} {4} {5} ({0}) [CRN {1}]".format(
+                                    vals['desc'],
+                                    lab_crn,
+                                    courses[lab_crn]['bldg'],
+                                    courses[lab_crn]['days'],
+                                    courses[lab_crn]['room'],
+                                    courses[lab_crn]['time']),
+                                vals['students'],
+                                ['Assignment', 'AssignmentExtraCredit',
+                                 'Project', 'ProjectExtraCredit'], favorite=True)
+
+    for ws_crn in config['registrar']['workshops']:
+        if not ws_crn:
+            continue
+
+        if ws_crn not in courses:
+            print("Workshop CRN {0} not found. Skipping…".format(ws_crn))
+            continue
+
+        wsl = config['admin']['workshop_leaders'][ws_crn]
+
+        students_ws = access.roster_query(term, ws_crn)[ws_crn]
+        ws_keys = set(students_ws.keys())
+        for key in (ws_keys - lecture_keys):
+            print("Student {0} is in ws {1} but not in lecture section."
+                  .format(students_ws[key]['name'], ws_crn))
+            del students_ws[key]
+
+        names_dict = wsl_partition(courses, ws_crn, wsl, students_ws)
+        for name, vals in names_dict.items():
+            name = name if name else "NOT_ASSIGNED_{0}".format(ws_crn)
+            print("Creating Smart View for workshop leader: {0}…".format(name))
+            bb.create_smartview("Workshop: {0}".format(name),
+                                "{2} {3} {4} {5} ({0}) [CRN {1}]".format(
+                                    vals['desc'],
+                                    ws_crn,
+                                    courses[ws_crn]['bldg'],
+                                    courses[ws_crn]['days'],
+                                    courses[ws_crn]['room'],
+                                    courses[ws_crn]['time']),
+                                vals['students'],
+                                ['Workshop', 'Quiz', 'QuizExtraCredit'], favorite=True)
+
+    bb.logout()
+
+    access.logout()
+
+if __name__ == '__main__':
+    main()

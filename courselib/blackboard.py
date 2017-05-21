@@ -5,7 +5,7 @@ import requests
 import sys
 import re
 from config import config
-from pprint import pprint
+import json
 
 """
 import logging
@@ -135,6 +135,130 @@ class BlackBoard:
 
         return contents
 
+    def create_smartview(self, name, desc, student_ids, category_names,
+                         favorite=False):
+        course_id = config['registrar']['blackboard']['course_id']
+        payload = {
+            'course_id': course_id,
+        }
+        response = self.session.get(config['courselib']
+                                    ['bb_smartview_manage_url'],
+                                    params=payload)
+
+        soup = BeautifulSoup(response.text, "lxml")
+        svid = list(filter(lambda x: True if x['name'] == name else False,
+                           self.course_data['customViews']))
+
+        payload = {
+            'course_id': course_id,
+            'actionType': 'modify',  # If no ID is supplied, creates new.
+        }
+
+        if svid:
+            payload['id'] = "_" + svid[0]['id'] + "_1"
+
+        response = self.session.get(config['courselib']
+                                    ['bb_smartview_add_url'],
+                                    params=payload)
+
+        soup = BeautifulSoup(response.text, "lxml")
+
+        nonce = soup.select('#custom_view_form '
+                            'input[name="blackboard.'
+                            'platform.security.NonceUtil.nonce"]')
+
+        if not nonce or not nonce[0].attrs['value']:
+            print("BlackBoard error: nonce retrieval failed.")
+            sys.exit(1)
+
+        nonce = nonce[0].attrs['value']
+
+        payload = [
+            ('blackboard.platform.security.NonceUtil.nonce', nonce),
+            ('course_id', course_id),
+            ('hasUserId', 'true'),
+            ('favorite', 'true'),
+            ('name', name),
+            ('description', desc),
+            ('favoriteCbox', 'true'),
+            ('searchType', 'simple'),
+            ('categorySel', 'all'),
+            ('userSel', 'selectedUsers'),
+            ('studentinclude', 'selected'),
+            ('divId', '#'),
+            ('fid#', '1'),
+            ('queryCriteria#', '109062'),
+            ('queryCondition#', 'eq'),
+            ('queryTextValue#', ''),
+            ('queryText2Value#', ''),
+            ('queryRadioValue#', 'A'),
+            ('queryDValue#', ''),
+            ('count', '0'),
+            ('cumulativeCount', '0'),
+            ('filterQueryCriteria', 'bycat'),
+            ('filterQueryCondition', '275996'),
+            ('bottom_Submit', "Submit"),
+        ]
+
+        if svid:
+            payload.append(('id', "_" + svid[0]['id'] + "_1"))
+
+        cids = []
+        for category in category_names:
+            cid = list(filter(lambda x: True if x['name'] == category
+                              else False,
+                              self.course_data['categories']))
+
+            if cid:
+                cids.append(cid[0]['id'])
+
+        students = {}
+        students['userIds'] = ['st_' + self.sid_to_bbid[sid]
+                               for sid in student_ids
+                               if sid in self.sid_to_bbid]
+
+        students['showstuhidden'] = False
+
+        display = {}
+        display['showhidden'] = False
+        display['items'] = 'bycat'
+        display['ids'] = ['c_' + str(cid) for cid in cids]
+        json_text = {'searchType': 'simple'}
+        json_text['students'] = students
+        json_text['display'] = display
+        payload.append(('jsonText', json.dumps(json_text)[1:-1]))
+
+        aliases = {'aliases': [{'alias': 'st_' + self.sid_to_bbid[sid],
+                                'id': self.sid_to_bbid[sid]}
+                               for sid in student_ids
+                               if sid in self.sid_to_bbid]}
+
+        aliases['aliases'] += [{'alias': 'c_' + cid, 'id': cid}
+                               for cid in cids]
+
+        payload.append(('aliasJSonStr', json.dumps(aliases)))
+
+        alias_string = ['st_' + self.sid_to_bbid[sid] + ":" +
+                        self.sid_to_bbid[sid]
+                        for sid in student_ids
+                        if sid in self.sid_to_bbid]
+        alias_string += ['c_' + cid + ":" + cid
+                         for cid in cids]
+
+        payload.append(('aliasString', ",".join(alias_string)))
+
+        payload += [('simpleList', self.sid_to_bbid[sid])
+                    for sid in student_ids
+                    if sid in self.sid_to_bbid]
+
+        response = self.session.post(
+            config['courselib']['bb_smartview_add_url'],
+            data=payload)
+
+        soup = BeautifulSoup(response.text, 'lxml')
+        if len(soup.select("span#badMsg1")) > 0:
+            print(soup.select("span#badMsg1")[0].text)
+
     def manage_assignment(self, parent_id, item_id, attrs):
         # We are not naming the parts of the POST request, so there is a tuple
         # with the first element as an empty string.
@@ -181,14 +305,37 @@ class BlackBoard:
                                      files=attrs)
 
     def load_course_data(self):
-        import json
-
         payload = {
             'course_id': config['registrar']['blackboard']['course_id'],
+            'version':"-1"
         }
+
         response = self.session.get(config['courselib']['bb_jsondata_url'],
                                     params=payload)
+
         self.course_data = json.loads(response.text)
+
+        if 'cachedBook' in self.course_data:
+            print("Using cached course JSON data...")
+            self.course_data = self.course_data['cachedBook']
+
+        self.student_dict = {data['uid']: stud
+                             for stud in self.course_data['rows']
+                             for data in stud if data.get('uid')}
+
+        self.bbid_to_sid = {data['uid']:
+                            list(filter(lambda x: True
+                                        if x.get('c') == 'SI'
+                                        else False, stud))[0]['v']
+                            for stud in self.course_data['rows']
+                            for data in stud if data.get('uid')}
+
+        self.sid_to_bbid = {data['v']:
+                            list(filter(lambda x: True
+                                        if x.get('uid')
+                                        else False, stud))[0]['uid']
+                            for stud in self.course_data['rows']
+                            for data in stud if data.get('c') == 'SI'}
 
     def gradebook_query(self, name_or_id):
         """
@@ -292,3 +439,98 @@ class BlackBoard:
             for block in response.iter_content(1024):
                 download.write(block)
             print("Downloading assignments from '{0}'".format(response.url))
+
+    def download_gradebook(self, options, output_dir=None):
+        course_id = config['registrar']['blackboard']['course_id']
+        payload = {
+            'course_id': course_id,
+            'dispatch': 'viewDownloadOptions',
+        }
+
+        response = self.session.get(config['courselib']
+                                    ['bb_download_gradebook_url'],
+                                    params=payload)
+
+        soup = BeautifulSoup(response.text, "lxml")
+        nonce = soup.select('form[action="/webapps/gradebook/do/instructor/'
+                            'downloadGradebook"] input[name="blackboard.'
+                            'platform.security.NonceUtil.nonce"]')
+
+        if not nonce[0].attrs['value'] or not nonce[1].attrs['value']:
+            print("BlackBoard error: retrieval returned 'None' as a response.")
+            sys.exit(1)
+
+        nonce_1 = nonce[0].attrs['value']
+        nonce_2 = nonce[1].attrs['value']
+
+        # Next, POST the form data, and parse the response.
+        payload = {
+            'course_id': course_id,
+            "userIds": "",
+            "itemIds": "",
+            "noCustomView": "false",
+            "dispatch": "setDownloadOptions",
+            "downloadOption": "ALL",
+            "item": course_id,
+            "delimiter": "TAB",
+            "hidden": "false",
+            "downloadTo": "LOCAL",
+            "targetPath_CSFile": "",
+            "targetPath_attachmentType": "C",
+            "targetPath_fileId": "",
+            "bottom_Submit": "Submit",
+        }
+
+        payload = list(payload.items()) + \
+            [('blackboard.platform.security.NonceUtil.nonce', nonce_1),
+             ('blackboard.platform.security.NonceUtil.nonce', nonce_2)]
+
+        response = self.session.post(
+            config['courselib']['bb_download_gradebook_url'],
+            data=payload)
+
+        # This should be the download page
+        soup = BeautifulSoup(response.text, "lxml")
+        css_selector = 'form[id="download_form"] '\
+            'input[name='\
+            '"blackboard.platform.security.NonceUtil.nonce"]'
+        nonce = soup.select(css_selector)
+
+        if not nonce[0].attrs['value']:
+            print("BlackBoard error: retrieval returned 'None' as a response.")
+            sys.exit(1)
+
+        nonce = nonce[0].attrs['value']
+
+        payload = {
+            "course_id": course_id,
+            "downloadOption": "ALL",
+            "delimiter": "TAB",
+            "item": course_id,
+            "gradePeriod": "",
+            "comments": "false",
+            "hidden": "false",
+            "userIds": "",
+            "itemIds": "",
+            "downloadTo": "LOCAL",
+            "blackboard.platform.security.NonceUtil.nonce": nonce,
+        }
+
+        # Download the gradebook
+        download_url = config['courselib']['bb_download_gradebook_url'] + \
+            "dispatch=executeDownload"
+
+        response = self.session.post(download_url, data=payload)
+
+        import re
+        pattern = re.compile(';\s?filename="(.*)"\s*;')
+        header = response.headers['Content-Disposition']
+        filename = pattern.findall(header)[0]
+
+        if output_dir:
+            filename = output_dir + filename
+
+        with open(filename, 'wb') as download:
+            for block in response.iter_content(1024):
+                download.write(block)
+            print("Downloading gradebook...")

@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+
+import courselib.blackboard
+from config import config
+import argparse
+
+
+def main():
+    output_dir = config['bb_download_gradebook']['output_dir']
+    parser = argparse.ArgumentParser()
+    # TODO: Add arugments processing to match web form options.
+
+    args = parser.parse_args()
+
+    # Log into Blackboard
+    b = courselib.blackboard.BlackBoard()
+    b.login()
+
+    options = None
+    b.download_gradebook(options, output_dir=output_dir)
+
+    # Logout of Blackboard
+    b.logout()
+
+if __name__ == '__main__':
+    main()

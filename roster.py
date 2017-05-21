@@ -28,19 +28,32 @@ def print_courses(args):
     access.term_query()
     courses = access.course_query(term)
 
-    courses = courses.values()
+    courses = list(courses.values())
+    courses.sort(key=lambda c: c['course_title'])
 
-    print("{0:8s}{1:10s}{2:33s}{3:7s}{4:12s}{5:7s}{6:7s}{7:13s}{8:8s}"
-          .format(
-              "CRN", "Course", "Course Title", "Days",
-              "Time", "Bldg", "Room", "Sect Enrol", "Sect Cap"))
+    cols = [("CRN", "crn"), ("Course", "course"), 
+            ("Course Title", "course_title"), ("Days", 'days'),
+            ("Time", "time"), ("Bldg", "bldg"), ("Room", "room"),
+            ("Sect Enrol", "enrolled"), ("Sect Cap", "cap")]
+
+    col_widths = [0] * len(cols)
+
+    for i, (header, key) in enumerate(cols):
+        for v in courses:
+            col_widths[i] = max(col_widths[i], len(header), len(str(v[key])))
+
+    print("{0:{w[0]}s}\t{1:{w[1]}s}\t\t{2:{w[2]}s}\t{3:{w[3]}s}\t"
+          "{4:{w[4]}s}\t{5:{w[5]}s}\t{6:{w[6]}s}\t\t{7:{w[7]}s}\t{8:{w[8]}s}"
+          .format(*[h for h, c in cols], w=col_widths))
 
     for v in courses:
-        print("{0:<8d}{1:10s}{2:33s}{3:7s}{4:12s}{5:7s}{6:7s}{7:<13d}{8:<8d}"
+        print("{0:{w[0]}d}\t{1:{w[1]}s}\t\t{2:{w[2]}s}\t{3:{w[3]}s}\t"
+              "{4:{w[4]}s}\t{5:{w[5]}s}\t{6:{w[6]}s}\t\t{7:{w[7]}d}\t"
+              "{8:{w[8]}d}"
               .format(
                   v["crn"], v["course"], v["course_title"], v["days"],
                   v["time"], v["bldg"], v["room"], v["enrolled"],
-                  v["cap"]))
+                  v["cap"], w=col_widths))
 
         childs = v.get('crn_child')
         if childs:
@@ -82,7 +95,7 @@ def print_roster(args):
     student_rosters = access.roster_query(term, crn)
 
     for course_crn, students in student_rosters.items():
-        
+
         if not args.quiet:
             try:
 
@@ -133,7 +146,7 @@ def print_roster_mail(args):
     student_rosters = access.roster_query(term, crn)
 
     for course_crn, students in student_rosters.items():
-        
+
         if not args.quiet:
             try:
 

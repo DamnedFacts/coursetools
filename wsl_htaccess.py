@@ -10,10 +10,14 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
 with open(config["wsl_htaccess"]["output_file"], "w") as f:
-    htaccess_str = """AuthType Basic
+    htaccess_str = """
+RewriteEngine On
+RewriteCond %{{HTTPS}} off
+RewriteRule .* https://%{{HTTP_HOST}}%{{REQUEST_URI}} [L,R=301]
+
+AuthType Basic
 AuthName "CSC 161 Workshop Leaders: Login with NetID"
 AuthBasicProvider ldap
-AuthzLDAPAuthoritative on
 AuthLDAPURL "{0}"
 require ldap-user {1}""".format(config["wsl_htaccess"]["ldap_url"],
                                 config["courselib"]["user"])
