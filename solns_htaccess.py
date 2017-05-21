@@ -23,13 +23,19 @@ require ldap-user {1}""".format(config["solns_htaccess"]["ldap_url"],
                                 config["courselib"]["user"])
 
     for lab in config["admin"]["lab_TAs"].values():
+        if not lab:
+            continue
         for lab_ta in lab:
             htaccess_str += " " + lab_ta['netid']
 
     for leader in config["admin"]["workshop_leaders"].values():
+        if not leader:
+            continue
         htaccess_str += " " + leader['netid']
 
     for grad in config["admin"]["grad_TAs"]:
+        if not grad:
+            continue
         htaccess_str += " " + grad['netid']
 
     print(htaccess_str, file=f)

@@ -5,8 +5,8 @@ from collections import OrderedDict
 import sys
 
 
-def plain_out(output_file):
-    for gta in config['admin']['grad_TAs']:
+def plain_out(output_file, gtas):
+    for gta in gtas:
         person = "{0} <{1}>".format(gta['name'], gta['email'])
         print("{0:50} {1} {2}".format(person,
                                       gta['office'],
@@ -21,8 +21,7 @@ def rst_table_borders(cols):
     return s[:-1]
 
 
-def rst_out(output_file):
-    gtas = config['admin']['grad_TAs']
+def rst_out(output_file, gtas):
     cat = ['name', 'email', 'office', 'hours']
     maxes = [0] * len(cat)
 
@@ -39,7 +38,7 @@ def rst_out(output_file):
 
     print("\n" + rst_table_borders(lens), file=output_file)
 
-    for gta in config['admin']['grad_TAs']:
+    for gta in gtas:
         for i in range(len(cat)):
             print("{0:{1}}".format(gta[cat[i]], maxes[i] + 1),
                   end="",
@@ -70,10 +69,11 @@ def main():
     else:
         output_file = sys.stdout
 
+    gtas = [gta for gta in config['admin']['grad_TAs'] if gta]
     if args.rst_output:
-        rst_out(output_file)
+        rst_out(output_file, gtas)
     else:
-        plain_out(output_file)
+        plain_out(output_file, gtas)
 
     output_file.close()
 

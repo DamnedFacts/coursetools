@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
+from enum import Enum
 from datetime import datetime, time, timedelta
+from math import ceil
+from collections import OrderedDict
+import yaml
 from courselib.weekday import Weekday
 from courselib.instructor_access import InstructorAccess
-from math import ceil
-from enum import Enum
 from config import config
-import yaml
-from collections import OrderedDict
 
 access = InstructorAccess()
 access.login()
@@ -19,24 +19,24 @@ The following configuration variables need to be placed in the
 config.yaml.
 """
 # Get workshop days of the week
-workshop_days = set()   # Make sure all repeats are removed
+ws_days = set()   # Make sure all repeats are removed
 
 # for workshop_crn in config['registrar']['workshops']:
 #     workshop_day_codes = courses[workshop_crn]['days']
 #     for day in workshop_day_codes:
-#         workshop_days.add(Weekday(day))
-workshop_days = {Weekday(day)
+#         ws_days.add(Weekday(day))
+ws_days = tuple({Weekday(day)
                  for workshop_crn in config['registrar']['workshops']
                  if workshop_crn in courses
-                 for day in courses[workshop_crn]['days']}
+                 for day in courses[workshop_crn]['days']})
 
 session_start = config['registrar']['session_start']
 session_end = config['registrar']['session_end']
 breaks = config['gen_sched']['breaks']
 
-workshop_days = tuple(workshop_days)
-workshop_day = Weekday.Sunday if min(workshop_days) == 0 and\
-    Weekday.Sunday in workshop_days else min(workshop_days)
+workshop_day = Weekday.Sunday\
+    if not ws_days or Weekday.Sunday in ws_days and min(ws_days) == 0\
+    else min(ws_days)
 
 # Multiple topics per lecture can be placed in a tuple.
 topics = tuple([topic['title'] for topic in config['gen_sched']['topics']
@@ -205,7 +205,9 @@ def gen_workshop(day, weekday, break_name, break_len, workshop_num,
     #
     # Workshop Cycles
     #
-    if week == 1 and day == session_start:
+    if not ws_days:
+        pass
+    elif week == 1 and day == session_start:
         print_agenda(day, "No workshop cycle this week")
     elif weekday != workshop_day:
         pass
@@ -214,13 +216,13 @@ def gen_workshop(day, weekday, break_name, break_len, workshop_num,
     elif class_state.cancel_threshold() and\
             topics.count(topics[topic_num]) >= class_state.len():
         print_agenda(day, "No workshop cycle this week")
-    elif (day + timedelta(days=len(workshop_days))) > session_end:
+    elif (day + timedelta(days=len(ws_days))) > session_end:
         print_agenda(day, "No workshop cycle this week")
     elif class_state.cancel_threshold(future=True) and \
         (topics.count(topics[topic_num]) * len(config['registrar']['crn']) >=
          class_state.len()):
         print_agenda(day, "No workshop cycle this week")
-    elif ((break_name and break_len > (round(len(workshop_days)*0.3))) or
+    elif ((break_name and break_len > (round(len(ws_days)*0.3))) or
           (topics[lecture_num] not in workshops or
            topics[lecture_num + 1] not in workshops) or
           is_topic(workshops[workshop_num]) == topics[lecture_num]):
@@ -264,7 +266,7 @@ def gen_quizzes(day, weekday, break_name, break_len, quiz_num,
     if not class_state.is_classday() or \
             weekday != max(class_state.section_enum()):
         pass
-    elif (break_name and break_len > (round(len(workshop_days)*0.3))):
+    elif (break_name and break_len > (round(len(ws_days)*0.3))):
         print_agenda(day, "No quiz this week")
     elif states_recent_topic() not in quizzes:
         print_agenda(day, "No quiz this week")

@@ -26,12 +26,14 @@ def make_card(person):
 # Make vcard for Lab Tas
 people = []
 for ta in config['admin']['lab_TAs'].values():
+    if not ta:
+        continue
     people += ta
 
 vcard_f = open(config['gen_vcard']['output_dir'] + "csc161-tas.vcard", 'w')
 
 for person in people:
-    if not person['name']:
+    if not person or not person['name']:
         continue
 
     card = make_card(person)
@@ -44,7 +46,7 @@ people = config['admin']['workshop_leaders'].values()
 vcard_f = open(config['gen_vcard']['output_dir'] + "csc161-wsl.vcard", 'w')
 
 for person in people:
-    if not person['name']:
+    if not person or not person['name']:
         continue
 
     card = make_card(person)
@@ -56,7 +58,7 @@ people = config['admin']['grad_TAs']
 vcard_f = open(config['gen_vcard']['output_dir'] + "csc161-gradtas.vcard", 'w')
 
 for person in people:
-    if not person['name']:
+    if not person or not person['name']:
         continue
 
     card = make_card(person)
