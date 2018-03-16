@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from courselib.instructor_access import InstructorAccess
-from config import config
+from courselib.config import config
 import argparse
 import sys
 from collections import OrderedDict

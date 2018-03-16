@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+
+from time import sleep
+import argparse
+import pandas as pd
+from courselib.instructor_access import InstructorAccess
+from courselib.config import config
+
+
+col_letter = "Final Course Letter Grade"
+col_score = "Final Course Score"
+col_code = "Grading Code"
+
+col_letter_re = "Course Grade \[.*\].*"
+col_code_re = "Grading Code \[.*\].*"
+col_score_re = "Course Score \[.*\].*"
+
+
+def p2f(x):
+    """Convert a percentage string to a decimal value between 0..1"""
+
+    new_x = pd.Series()
+    for i, val in x.iteritems():
+        try:
+            # new_x.set_value(i, float(val.strip('%'))/100)
+            new_x.set_value(i, float(val)/100)
+        except ValueError:
+            new_x.set_value(i, val)
+
+    return new_x
+
+
+def get_grade_scale():
+    """Retrieve grading scale from configuration spreadsheet"""
+
+    grade_config = pd.ExcelFile("../grades/Class Grades.xlsx")
+    grade_scale = grade_config.parse("Grade Scale", parse_cols="A:E")[0:10]
+    grade_scale['Letter Grade'] = grade_scale['Letter Grade']
+    grade_scale['Lower %'] = pd.to_numeric(grade_scale['Lower %'])
+    grade_scale['Upper %'] = pd.to_numeric(grade_scale['Upper %'])
+    return grade_scale['Letter Grade'],\
+        grade_scale['Upper %'],\
+        grade_scale['Lower %']
+
+
+def parse_cmdline():
+    """Parse command line options"""
+
+    parser = argparse.ArgumentParser(description='Generate final grading data')
+    parser.add_argument('csv_filename', metavar='csv_file', type=str,
+                        nargs=1, help='filename to CSV data')
+
+    # Add curving option!
+    method_group = parser.add_mutually_exclusive_group(required=True)
+
+    method_group.add_argument('--raw', '-r', dest='raw', action='store_true',
+                              help='course scores are left as raw values.')
+    method_group.add_argument('--truncate', '-t', dest='trunc', action='store_true',
+                              help='course scores are truncated to match precision '
+                              'of grading scale values')
+    method_group.add_argument('--round', '-o', dest='round', action='store_true',
+                              help='course scores are rounded to match precision '
+                              'of grading scale values')
+    method_group.add_argument('--curve', '-c', dest='curve', action='store_true',
+                              help='course scores are curved')
+
+    output_group = parser.add_mutually_exclusive_group(required=True)
+    output_group.add_argument('--csv', dest='csv', action='store_true',
+                              help='course scores are written to a CSV file.')
+    output_group.add_argument('--access', dest='access',
+                              action='store_true',
+                              help='course scores are written to '
+                                   'Instructor Access.')
+
+    parser.add_argument('--ids', dest='ids', nargs='+')
+
+    args = parser.parse_args()
+    return args
+
+
+def grades_to_file(grade_data):
+    grade_data.to_csv("final_grades.csv")
+
+
+def grades_to_access(grade_data, crn, term, id_filter=None):
+    # TODO 
+    # Option to read gradebook CSV file directly from the network instead 
+    # of saving it first to a file.
+    #
+    # Submit and Seal form submissions need to be added to InstructorAccess,
+    # see notes.
+    #
+    # Grade validation probably should be a POST request, instead of a GET with
+    # query parameters.
+    #
+    ia = InstructorAccess()
+    ia.login()
+    for row_i, row in grade_data.iterrows():
+        if isinstance(id_filter, list) and row['Username'] not in id_filter:
+            continue
+
+        try:
+            ia.validate_grade(crn, term,
+                              row['Student ID'],
+                              row['Final Course Letter Grade'])
+            print("Validating and updating grade for {0}, {1} ({2}): {3}."\
+                  .format(row['Last Name'],
+                          row['First Name'],
+                          row['Student ID'],
+                          row['Final Course Letter Grade']))
+        except ConnectionError:
+            print("Failed validating and updating grade for {0}, {1} ({2})."\
+                  .format(row['Last Name'],
+                          row['First Name'],
+                          row['Student ID']))
+        sleep(1)
+
+
+def main():
+    args = parse_cmdline()
+
+    gradebook = pd.read_csv(args.csv_filename[0],
+                            sep='\t',
+                            encoding="utf-16")
+
+    # Convert student ID column to int data type.
+    gradebook['Student ID'].fillna(0, inplace=True)
+    gradebook[['Student ID']] = gradebook[['Student ID']].astype(int)
+
+
+    grade_score_df = gradebook.filter(regex=(col_score_re)).apply(p2f)
+    grade_letter_df = gradebook.filter(regex=(col_letter_re))
+    grade_code_df = gradebook.filter(regex=(col_code_re))
+    grade_score_df.columns = [col_score]
+    grade_letter_df.columns = [col_letter]
+    grade_code_df.columns = [col_code]
+    final_grades = pd.concat([gradebook[['Last Name', 'First Name',
+                                         'Student ID', 'Username']],
+                              grade_code_df,
+                              grade_score_df,
+                              grade_letter_df],
+                             axis='columns')
+
+    final_grades[col_code].fillna("", inplace=True)
+
+    gs_letter, gs_upper, gs_lower = get_grade_scale()
+
+    for row_i, row in final_grades.iterrows():
+
+        if args.trunc:
+            # This truncates the float value to 4 digits,
+            # 0.00 to 1.00 (higher, with extra credit)
+            nlen = len(str(gs_lower[0]))
+            grade_score = float(str(row[col_score])[:nlen])
+        elif args.raw:
+            # Will likely fail due to how grade scale is ranged
+            grade_score = row[col_score]
+        elif args.round:
+            nlen = len(str(gs_lower[0]))
+            grade_score = round(row[col_score], nlen - 2)
+        elif args.curve:
+            nlen = len(str(gs_lower[0]))
+            factor = 0.454545455
+            score = row[col_score]
+            grade_score = (((100**(1-score)) * score**factor)+(score*100))/100
+            grade_score = round(grade_score, nlen - 2)
+
+        grade_letter = row[col_letter]
+
+        # Normalize class scores >100% down to 100%.
+        if grade_score > 1.0:
+            grade_score = 1.0
+
+        idx = gs_letter[(grade_score >= gs_lower) &
+                        (grade_score <= gs_upper)].index
+
+        # Keep as error checking to see if grades match that in CSV file
+        if grade_letter != gs_letter[idx].values[0]:
+            print(row, gs_letter[idx].values[0], "\n")
+
+        final_grades.loc[row_i, col_score] = grade_score
+        final_grades.loc[row_i, col_letter] = gs_letter[idx].values[0]
+
+        if row[col_code]:
+            # If the column contains "I" or "N" grading code to override
+            # calculated grade letter.
+            final_grades.loc[row_i, col_letter] = row[col_code]
+
+    if args.csv:
+        grades_to_file(final_grades)
+    elif args.access:
+        crn = config['registrar']['crn'][0]
+        term = config['registrar']['term']
+        grades_to_access(final_grades, crn, term, id_filter=args.ids)
+
+
+main()

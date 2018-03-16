@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import os
-from config import config
+from courselib.config import config
 
 output = config["wsl_htaccess"]["output_file"]
 output_dir = os.path.dirname(output)
@@ -18,6 +18,10 @@ RewriteRule .* https://%{{HTTP_HOST}}%{{REQUEST_URI}} [L,R=301]
 AuthType Basic
 AuthName "CSC 161 Workshop Leaders: Login with NetID"
 AuthBasicProvider ldap
+AuthLDAPInitialBindAsUser On
+AuthLDAPSearchAsUser On
+AuthLDAPCompareAsUser On
+AuthLDAPInitialBindPattern (.+) uid=$1,ou=people,dc=rochester,dc=edu
 AuthLDAPURL "{0}"
 require ldap-user {1}""".format(config["wsl_htaccess"]["ldap_url"],
                                 config["courselib"]["user"])

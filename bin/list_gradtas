@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from config import config
+from courselib.config import config
 from collections import OrderedDict
 import sys
 
@@ -69,11 +69,14 @@ def main():
     else:
         output_file = sys.stdout
 
-    gtas = [gta for gta in config['admin']['grad_TAs'] if gta]
-    if args.rst_output:
-        rst_out(output_file, gtas)
+    if config['admin']['grad_TAs']:
+        gtas = [gta for gta in config['admin']['grad_TAs'] if gta]
+        if args.rst_output:
+            rst_out(output_file, gtas)
+        else:
+            plain_out(output_file, gtas)
     else:
-        plain_out(output_file, gtas)
+        print("No graduate TAs assigned.", file=output_file)
 
     output_file.close()
 

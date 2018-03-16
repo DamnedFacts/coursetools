@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from courselib.instructor_access import InstructorAccess
-from config import config
+from courselib.config import config
 import os
 
 output = config["wsl_mapper"]["output_file"]
@@ -110,6 +110,11 @@ def main():
 
         students_lists_lecture = access.roster_query(term, lecture_crn)
         students_lecture = {}
+
+        if config['registrar']['labs'][0] is None:
+            output.write(table_str)
+            print("\n*There are no TAs for this course.*", file=output)
+            return
 
         for lab_crn in config['registrar']['labs']:
             if not lab_crn:

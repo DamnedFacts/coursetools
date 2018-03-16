@@ -2,7 +2,7 @@
 
 from courselib.instructor_access import InstructorAccess
 from courselib.blackboard import BlackBoard
-from config import config
+from courselib.config import config
 
 
 def wsl_partition(courses, crn, leader, students):

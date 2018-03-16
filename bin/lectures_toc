@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+
+from pathlib import Path
+import re
+import os
+from courselib.config import config
+from urllib.parse import quote
+import sys
+
+
+input_dir = config["lectures_toc"]["input_dir"]
+output_file = config["lectures_toc"]["output_file"]
+output_dir = os.path.dirname(output_file)
+
+def gen_nb_col():
+    p = Path(input_dir)
+    topics = {}
+    for _dir in p.iterdir():
+        if _dir.is_dir() and _dir.name[0].isdigit():
+            p = Path(str(_dir)+"/notebooks")
+            dir_parts = re.findall(r'^(\d+)-([\w&]+(?:[\s_-][\w&]*)*)$', _dir.name)
+            index, name = dir_parts[0]
+            title = re.sub(r'-', r' ', name, 1)
+            title = re.sub(r'_', r' ', name)
+            files = list(p.iterdir())
+            topics[int(index)] = (title, files, _dir.name)
+
+    strings = {}
+    for i in range(len(topics)):
+        if topics[i][1]:
+            strings[topics[i][0]] = []
+            for nb in topics[i][1]:
+                if nb.suffix == ".ipynb":
+                    url = quote("_static/notebooks/" +
+                                str(topics[i][2]) + "/" +
+                                nb.name)
+                    strings[topics[i][0]].append({"name": nb.name, "url": url})
+
+    return strings
+
+
+def main():
+    topics = config['gen_sched']['lectures']
+    fh = open(output_file, 'w')
+    print(".. list-table::", file=fh)
+    print("   :header-rows: 1\n", file=fh)
+    print("\n   * - Topic", file=fh)
+    print("     - Notebooks", file=fh)
+    print("     - Links\n", file=fh)
+
+    notebook_files = gen_nb_col()
+    base_url = config["registrar"]["url"]
+
+    for subtopics in topics:
+        for i, topic in enumerate(subtopics['title']):
+            if subtopics['graded'][i] is not None:
+                print("   *\n", end="", file=fh)
+
+                col_info = "     -\n"
+                # Topics and readings column
+                p = Path(str(Path(input_dir).parent) + "/docs/source/_static/lectures")
+                topics = {}
+                found = False
+                for entry in p.iterdir():
+                    if entry.name == topic+".pdf":
+                        found = True
+
+                if found:
+                    filename = quote("_static/lectures/" + topic + ".pdf")
+                    col_info = "     - `{0} <{1}>`__\n".format(topic,
+                                                               filename)
+                else:
+                    col_info = "     - {0}\n".format(topic)
+
+                col_info += "\n       | Readings:\n"
+                col_info += "       | *{0}*".format(subtopics['readings'][i])
+                print("{0}".format(col_info), file=fh)
+
+                # Notebook column
+                col_info = "     -\n"
+                for nb in notebook_files.get(topic, ""):
+                    nb_base = nb['url'][:-6]
+                    col_info += "       | {0}\n".format(nb['name'][:-6])
+                    col_info += "       | `[view] <{0}>`__ `[ipynb] <{1}>`__ `[py] <{2}>`__\n\n".format(nb_base + ".html", 
+                                                                                                        nb_base + ".ipynb", 
+                                                                                                        nb_base + ".py")
+
+                print("{0}\n".format(col_info), end="", file=fh)
+
+                    # Links column
+                try:
+                    col_info = "     -\n"
+                    for link in subtopics["links"][i]:
+                        col_info += "       | `{0} <{1}>`__\n\n".format(link['title'], link['url'])
+                    print("{0}".format(col_info), file=fh)
+                except KeyError:
+                    print("     -", file=fh)
+
+    fh.close()
+
+
+if __name__ == '__main__':
+    main()

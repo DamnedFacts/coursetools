@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 from courselib.blackboard import BlackBoard
-from config import config
+from courselib.config import config
 import datetime
 import re
-from config import config
+from courselib.config import config
 
 url_base = config["registrar"]["url"] + "/labs/"
 labs = {}
@@ -30,10 +30,11 @@ The due date is {due_date}.</span></strong></p>"""
 bb = BlackBoard()
 bb.login()
 
-parent = config['bb_manage']['labs_parent_id']
+parent = config['registrar']['blackboard']['labs_parent_id']
+# FIXME: Unavailable assignments will not appear.
 bb_items = bb.list_content(parent)
 
-for label, item in config['admin']['due_dates'].items():
+for label, item in config['admin']['due_dates']['labs'].items():
     assign = {
         '__title': "",
         '__url': url_base + "computer-programs.html",
@@ -44,23 +45,27 @@ for label, item in config['admin']['due_dates'].items():
         'attemptType': "UNLIMITED_ATTEMPTS",
         'content_desc_text': "",
     }
-    dd = item[0] + datetime.timedelta(days=7)
+    dd = item['date'] + datetime.timedelta(days=item['days_due'])
 
-    url = ''.join(ch for ch in item[2].lower()
-                  if ch.isalnum() or ch.isspace()).replace(" ", "-")
+    url = ''.join(ch for ch in item['description'].lower()
+                  if ch.isalnum() or ch.isspace() or ch == '-').replace(" ", "-")
     url = re.sub(r'(-)\1{1,}', r'\1', url)
 
-    assign['__title'] = item[2]
+    assign['__title'] = item['description']
     assign['__url'] = url_base + url + ".html"
-    assign['contentName'] = item[1]
+    assign['contentName'] = item['title']
     assign['dueDate_datetime'] = str(dd)
     assign['content_desc_text'] = fill_desc(assign)
-    item_id = [_id for _id, val in bb_items.items() if val['title'] == item[1]]
+
+    item_id = [_id for _id, val in bb_items.items()
+               if val['title'] == item['title']]
 
     if not item_id:
-        print("No Blackboard item for assignment {0}".format(item[2]))
+        print("No Blackboard item for assignment {0}".format(item['description']))
         continue
 
     bb.manage_assignment(parent, item_id[0], list(assign.items()))
-
+    print("Updating assignment {0}: {1} (id {2})".format(item['title'],
+                                                         item['description'],
+                                                         item_id[0]))
 bb.logout()

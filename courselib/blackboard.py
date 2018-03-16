@@ -4,7 +4,8 @@ from bs4 import BeautifulSoup
 import requests
 import sys
 import re
-from config import config
+from courselib.config import config
+from courselib.utils import pretty_print_post
 import json
 
 """
@@ -260,12 +261,11 @@ class BlackBoard:
             print(soup.select("span#badMsg1")[0].text)
 
     def manage_assignment(self, parent_id, item_id, attrs):
+        # TODO: Should raise exception for possible issues.
         # We are not naming the parts of the POST request, so there is a tuple
         # with the first element as an empty string.
         for i in range(len(attrs)):
-            attrs[i] = (attrs[i][0], ("", attrs[i][1]))
-
-        print("Updating assignment id {}".format(item_id))
+            attrs[i] = (attrs[i][0], (None, attrs[i][1]))
 
         payload = {
             'content_id': item_id,
@@ -279,16 +279,16 @@ class BlackBoard:
                                     params=payload)
 
         soup = BeautifulSoup(response.text, "lxml")
-        form = soup.select('form#manageAssignmentForm')[0].find_all('input')
+        form = soup.select('form#manageAssignmentFormId')[0].find_all('input')
 
         for input_t in form:
             try:
-                attrs.append((input_t['name'], ("", input_t.get('value', ""))))
+                attrs.append((input_t['name'], (None, input_t.get('value', ""))))
             except KeyError:
                 pass
 
         textarea = soup.select("textarea#content_desc_text")[0]
-        attrs.append(("content_desc_text", ("", textarea.text)))
+        attrs.append(("content_desc_text", (None, textarea.text)))
 
         # del attrs["bottom_Cancel"]
         # del attrs["bottom_Submit"]
@@ -303,6 +303,9 @@ class BlackBoard:
         response = self.session.post(config['courselib']
                                      ['bb_manage_assign_url'],
                                      files=attrs)
+        if response.status_code != 200:
+            raise ConnectionError("Received a HTTP status code of {}"
+                                  .format(response.status_code))
 
     def load_course_data(self):
         payload = {
@@ -371,6 +374,9 @@ class BlackBoard:
         """
 
         assign = self.gradebook_query(assign_id_or_name)
+
+        if not assign:
+            raise KeyError(f"Gradebook column '{assign_id_or_name}' not found!")
 
         print("Downloading assignment {0} ({1})".format(assign['name'],
                                                         assign['id']))
@@ -456,12 +462,11 @@ class BlackBoard:
                             'downloadGradebook"] input[name="blackboard.'
                             'platform.security.NonceUtil.nonce"]')
 
-        if not nonce[0].attrs['value'] or not nonce[1].attrs['value']:
+        if not nonce[0].attrs['value']:
             print("BlackBoard error: retrieval returned 'None' as a response.")
             sys.exit(1)
 
         nonce_1 = nonce[0].attrs['value']
-        nonce_2 = nonce[1].attrs['value']
 
         # Next, POST the form data, and parse the response.
         payload = {
@@ -482,8 +487,7 @@ class BlackBoard:
         }
 
         payload = list(payload.items()) + \
-            [('blackboard.platform.security.NonceUtil.nonce', nonce_1),
-             ('blackboard.platform.security.NonceUtil.nonce', nonce_2)]
+            [('blackboard.platform.security.NonceUtil.nonce', nonce_1)]
 
         response = self.session.post(
             config['courselib']['bb_download_gradebook_url'],

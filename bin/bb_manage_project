@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+
+from courselib.blackboard import BlackBoard
+from courselib.config import config
+import datetime
+import re
+from courselib.config import config
+
+url_base = config["registrar"]["url"] + "/project/"
+
+
+def fill_desc(assignment):
+    tmpl_str = """<h2>Algorithmic Stock Trading Program</h2>  <p><br /><br
+    /></p> <p>Please read the <a href={proj_url}>requirements for this
+    Milestone </a> for proper submission.</p> <p><strong><span
+    style="font-size: small;">The due date is
+    {due_date}.</span></strong></p>"""
+
+    due_date_dt = datetime.datetime.strptime(assignment['dueDate_datetime'],
+                                             "%Y-%m-%d %H:%M:%S")
+
+    due_date_str = due_date_dt.strftime("%A, %B %-d, %Y at %-I:%M:%S %p")
+
+    return tmpl_str.format(title=assignment['__title'],
+                           proj_url=assignment['__url'],
+                           due_date=due_date_str)
+
+
+bb = BlackBoard()
+bb.login()
+
+parent = config['registrar']['blackboard']['projects_parent_id']
+# FIXME: Unavailable assignments will not appear.
+bb_items = bb.list_content(parent)
+
+for i, item in enumerate(config['admin']['due_dates']['projects'].values()):
+    assign = {
+        '__title': "",
+        '__url': url_base + "computer-programs.html",
+        'contentName': "",
+        'dueDate_datetime': "",
+        'possible': "33",
+        'isAvailable': "true",
+        'attemptType': "UNLIMITED_ATTEMPTS",
+        'content_desc_text': "",
+    }
+    dd = item['date'] + datetime.timedelta(days=item['days_due'])
+
+    url = "milestone-{0}".format(i+1)
+
+    assign['__title'] = item['description']
+    assign['__url'] = url_base + url + ".html"
+    assign['contentName'] = item['title']
+    assign['dueDate_datetime'] = str(dd)
+    assign['content_desc_text'] = fill_desc(assign)
+
+    item_id = [_id for _id, val in bb_items.items()
+               if val['title'] == item['title']]
+
+    if not item_id:
+        print("No Blackboard item for assignment {0}".format(item['description']))
+        continue
+
+    bb.manage_assignment(parent, item_id[0], list(assign.items()))
+    print("Updating assignment {0}: {1} (id {2})".format(item['title'],
+                                                         item['description'],
+                                                         item_id[0]))
+bb.logout()

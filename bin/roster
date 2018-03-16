@@ -16,10 +16,9 @@ def print_terms(args):
 
 def print_permission_code(args):
     # Get list of available course for that term
-    term = args.term
     access.term_query()
-    permission_code = access.permission_code_query(term)
-    print("The permission code for {0}: {1}".format(term, permission_code))
+    permission_code = access.permission_code_query()
+    print("Web Registration Permission Code: {0}".format(permission_code))
 
 
 def print_courses(args):
@@ -218,7 +217,7 @@ def main():
     # Log into Blackboard
     access.login()
 
-    if args.permission_code and args.term:
+    if args.permission_code:
         print_permission_code(args)
     elif not (args.term or args.course):
         print("\nAvailable terms to select from:")

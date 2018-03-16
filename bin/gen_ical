@@ -2,7 +2,7 @@
 
 from icalendar import Calendar, Event
 from icalendar.prop import vRecur
-from config import config
+from courselib.config import config
 from datetime import datetime, timedelta
 from courselib.weekday import Weekday
 from courselib.instructor_access import InstructorAccess
@@ -29,15 +29,15 @@ def recur_adjust(days):
                                                end_dow - 7))
     elif len(days) > 1:
         for day in days:
-            if day > sess_start.weekday():
+            if day >= sess_start.weekday():
                 start_d = sess_start + timedelta(days=(day -
                                                        sess_start.weekday()))
                 break
 
         for day in days:
-            if day < sess_end.weekday():
-                end_d = sess_end - timedelta(days=(sess_end.weekday() - day))
+            if day > sess_end.weekday():
                 break
+            end_d = sess_end - timedelta(days=(sess_end.weekday() - day))
 
     return start_d, end_d
 

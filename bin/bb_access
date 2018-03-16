@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+
+from courselib.blackboard import BlackBoard
+import argparse
+
+
+def add_bb_user(bb, user_id, role="S"):
+    """ 
+    Student: S
+    Instructor: P
+    Teaching Assistant: T
+    Course Builder: B
+    Grader: G
+    Guest: U
+    """
+    bb.add_user(user_id, role)
+
+
+def print_bb_users(user_id=None):
+    pass
+
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-u", "--username",
+                        type=str,
+                        nargs="?",
+                        default=None,
+                        help="provide a Blackboard User username",
+                        required=False,
+                        action='store')
+
+    parser.add_argument("-a", "--add",
+                        help="add the given BB ID to the the course",
+                        required=False,
+                        action='store_true')
+
+    parser.add_argument("-j", "--json",
+                        help="Prints output as JSON",
+                        required=False,
+                        action='store_true')
+
+    args = parser.parse_args()
+
+    # Log into Blackboard
+    bb = BlackBoard()
+    bb.login()
+
+    if args.username and args.add:
+        add_bb_user(bb, args.username, role=args.add)
+    elif args.username:
+        print_bb_users(bb, user_id=args.username)
+    else:
+        print_bb_users(bb)
+
+    # Logout of Blackboard
+    bb.logout()
+
+if __name__ == '__main__':
+    main()

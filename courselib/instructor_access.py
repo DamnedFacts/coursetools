@@ -5,8 +5,8 @@ import requests
 import sys
 import datetime
 import re
-
-from config import config
+import urllib
+from courselib.config import config
 
 """
 import logging
@@ -27,16 +27,15 @@ requests_log.propagate = True
 
 
 class InstructorAccess:
+    """Web scraper for using Instructor Access"""
+
     def __init__(self):
         self.session = requests.Session()
+        self.grading = None
 
     def login(self):
+        """Log into an Instructor Access sessions"""
         requests.utils.add_dict_to_cookiejar(self.session.cookies, {})
-
-        # Should obtain (mostly?) necessary cookies:
-        #    JSESSIONID, _utma, _utmc, _utmz, _ga,
-        #    _brand, s_session_id, session_id
-        self.session.get(config['roster']['landing_url'])
 
         # Form data
         payload = {
@@ -55,44 +54,41 @@ class InstructorAccess:
         headers = {}
 
         # Session metadata from visiting this URL
-        self.session.post(config['roster']['login_url'],
-                          data=payload,
-                          headers=headers)
+        self.__request('post', config['roster']['login_url'],
+                       data=payload,
+                       headers=headers)
 
         # Session metadata needed viewing Instructor Access, part 1
-        response = self.session.get(config['roster']['access_base_url'])
+        self.__request('head', config['roster']['access_base_url'])
 
-        if response.status_code != 200:
-            raise(ConnectionError, "Received a HTTP status code of {}"
-                  .format(response.status_code))
-
-        return response
+        # Session metadata needed viewing Instructor Access, part 2a: Grading
+        self.__request('head', config['roster']['access_grading_url'])
 
     def logout(self):
-        response = self.session.get(config['roster']['logout_url'])
-        return response
+        """Log out of an Instructor Access sessions"""
+        self.__request('get', config['roster']['logout_url'])
 
-    """Query Instructor Access for the student roster
-
-    Retrieves and returns the roster of a CRN for a particular
-    term. If querying a parent course, the returned dictionary includes
-    multiple keys for each course CRN, with values containing the student
-    roster for each.
-    """
     def roster_query(self, term, crn):
+        """Query Instructor Access for the student roster
+
+        Retrieves and returns the roster of a CRN for a particular
+        term. If querying a parent course, the returned dictionary includes
+        multiple keys for each course CRN, with values containing the student
+        roster for each.
+        """
         today = datetime.datetime.now()
 
-        term = term.replace("_", " ").split()[0] + ' Semester'
+        term, year = term.split("_")
 
-        if re.match("FALL", term):
-            academicyear = str(today.year) + str(today.year + 1)
-        elif re.match("SPRING", term):
-            academicyear = str(today.year - 1) + str(today.year)
-        elif re.match("SUMMER", term):
-            academicyear = str(today.year - 1) + str(today.year)
+        if term == "FALL":
+            academicyear = year + str(int(year) + 1)
+        elif term in ["SPRING", "SUMMER"]:
+            academicyear = str(int(year) - 1) + year
         else:
             print("Unknown term '{0}': exiting.".format(term))
             sys.exit(1)
+
+        term = term + ' Semester'
 
         payload = dict(
             rosterType=2,
@@ -112,13 +108,13 @@ class InstructorAccess:
                                     params=payload)
 
         if response.status_code != 200:
-            raise(ConnectionError, "Received a HTTP status code of {}"
-                  .format(response.status_code))
+            raise ConnectionError("Received a HTTP status code of {}"
+                                  .format(response.status_code))
 
-        roster_records = self._roster_parse(response)
+        roster_records = self.__roster_parse(response)
         return roster_records
 
-    def _roster_parse(self, roster_page):
+    def __roster_parse(self, roster_page):
         soup = BeautifulSoup(roster_page.text, "html.parser")
         roster_tables = soup.find_all("table",
                                       {"class": "rosterStudentDisplay"})
@@ -166,22 +162,17 @@ class InstructorAccess:
 
         return records_dict
 
-    """Query Instructor Access for the list of terms
-
-    Retrieves and returns the academic term history for the logged in
-    instructor.
-    """
     def term_query(self):
-        response = self.session.get(config['roster']['access_terms_url'])
+        """Query Instructor Access for the list of terms
 
-        if response.status_code != 200:
-            raise(ConnectionError, "Received a HTTP status code of {}"
-                  .format(response.status_code))
-
-        term_records = self._term_parse(response)
+        Retrieves and returns the academic term history for the logged in
+        instructor.
+        """
+        response = self.__request('get', config['roster']['access_terms_url'])
+        term_records = self.__term_parse(response)
         return term_records
 
-    def _term_parse(self, term_page):
+    def __term_parse(self, term_page):
         soup = BeautifulSoup(term_page.text, "html.parser")
         term_options = soup.find_all("option")
 
@@ -197,29 +188,28 @@ class InstructorAccess:
 
         return records
 
-    """Query Instructor Access for the list of courses for a term
-
-    Retrieves and returns the list of courses associate with an academic term
-    for the logged in instructor.
-
-    The returned dictionary of dictionaries is keyed for the parent courses,
-    any child courses cross-listed with the parent courses are embedded in each
-    value of the returned dictionary with a key 'crn_child'.
-    """
     def course_query(self, term):
+        """Query Instructor Access for the list of courses for a term
+
+        Retrieves and returns the list of courses associate with an academic
+        term for the logged in instructor.
+
+        The returned dictionary of dictionaries is keyed for parent courses,
+        any child courses cross-listed with the parent courses are embedded in
+        each value of the returned dictionary with a key 'crn_child'.
+        """
         # Session metadata needed viewing Instructor Access, part 2
         term = term.replace("_", " ")
-        response = self.session.get(config['roster']['access_courses_url'] +
-                                    term)
+        payload = {'AltCrsDisplay': term}
+        response = self.__request('get',
+                                  config['roster']['access_courses_url'],
+                                  params=payload)
 
-        if response.status_code != 200:
-            raise(ConnectionError, "Received a HTTP status code of {}"
-                  .format(response.status_code))
-
-        course_records = self._course_parse(response)
+        course_records = self.__course_parse(response)
         return course_records
 
-    def _course_parse(self, course_page):
+    def __course_parse(self, course_page):
+
         soup = BeautifulSoup(course_page.text, "html.parser")
         course_table = soup.find("table", {"class": "courseDisplay"})
 
@@ -272,28 +262,69 @@ class InstructorAccess:
         courses = self.course_query(term)
         return courses[crn].get('crn_child', {})
 
-    def permission_code_query(self, term):
+    def permission_code_query(self):
+        """Query Instructor Access for permission code.
+        """
+        # Get the most recent term, as the permission code is under an element
+        # tagged with the latest semester's name, regardless of what semester
+        # is selected.
+        term = self.term_query()[1]
+        payload = {'AltCrsDisplay': term}
         # Session metadata needed viewing Instructor Access, part 2
-        response = self.session.get(config['roster']['access_courses_url'] +
-                                    term.replace("_", " "))
+        response = self.__request('get',
+                                  config['roster']['access_courses_url'],
+                                  params=payload)
 
-        if response.status_code != 200:
-            raise(ConnectionError, "Received a HTTP status code of {}"
-                  .format(response.status_code))
-
-        permission_code = self._permission_code_parse(response, term)
+        permission_code = self.__permission_code_parse(response)
         return permission_code
 
-    def _permission_code_parse(self, course_page, term):
+    def __permission_code_parse(self, course_page):
         soup = BeautifulSoup(course_page.text, "html.parser")
-        permisson_code_p = soup.select("#sem{0} td p".format(term))
-        import re
-        pattern = re.compile(r"My Web Registration Permission Code: (\d*)")
-        m = pattern.search(permisson_code_p[0].text)
+        
+        # Break up and reform season and year tags for CSS selection
+        term = soup.select("select#semester_select > option")[1].text
+        term_year, term_season = term.split()
+        term = term_season + "_" + term_year
 
-        if not permisson_code_p:
+        permission_code_p = soup.select("tr#sem{0} td p".format(term))
+    
+        if not permission_code_p:
             print("Course error: Permission code retrieval returned 'None' "
                   "as a response.")
             sys.exit(1)
 
-        return m.group(1)
+        pattern = re.compile(r"My Web Registration Permission Code: (\d*)")
+        matched = pattern.search(permission_code_p[0].text)
+
+        return matched.group(1)
+
+    def validate_grade(self, crn, term, student_id, grade_letter):
+        # Session metadata needed viewing Instructor Access, part 2b: Grading
+        if not self.grading or \
+                self.grading['crn'] != crn or \
+                self.grading['term'] != term:
+            query = "?" + urllib.parse.urlencode({"CRN": crn,
+                                                  "yearTerm": term.replace("_",
+                                                                           " ")})
+            url = config['roster']['access_grade_course_url'] + query
+            response = self.__request('head', url)
+            self.grading = {'crn': crn, 'term': term}
+
+        query = "?" + urllib.parse.urlencode({f"grade_{student_id}": grade_letter,
+                                              "urid": student_id})
+        url = config['roster']['access_grade_validate_url'] + query
+        response = self.session.get(url)
+        if response.status_code != 200:
+            raise ConnectionError("Received a HTTP status code of {}"
+                                  .format(response.status_code))
+
+
+    def __request(self, method, *args, **kwargs):
+        method = eval("self.session." + method)
+        response = method(*args, **kwargs)
+
+        if response.status_code != 200:
+            raise ConnectionError("Received a HTTP status code of {}"
+                                  .format(response.status_code))
+
+        return response
