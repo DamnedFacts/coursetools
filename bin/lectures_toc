@@ -49,40 +49,39 @@ def main():
     print("     - Links\n", file=fh)
 
     notebook_files = gen_nb_col()
-    base_url = config["registrar"]["url"]
 
     for subtopics in topics:
-        for i, topic in enumerate(subtopics['title']):
-            if subtopics['graded'][i] is not None:
+        for topic in subtopics:
+            if topic['graded']:
                 print("   *\n", end="", file=fh)
 
                 col_info = "     -\n"
                 # Topics and readings column
-                p = Path(str(Path(input_dir).parent) + "/docs/source/_static/lectures")
-                topics = {}
+                p = Path(str(Path(input_dir).parent)
+                         + "/docs/source/_static/lectures")
                 found = False
                 for entry in p.iterdir():
-                    if entry.name == topic+".pdf":
+                    if entry.name == topic['title'] +".pdf":
                         found = True
 
                 if found:
-                    filename = quote("_static/lectures/" + topic + ".pdf")
-                    col_info = "     - `{0} <{1}>`__\n".format(topic,
+                    filename = quote("_static/lectures/" + topic['title'] + ".pdf")
+                    col_info = "     - `{0} <{1}>`__\n".format(topic['title'],
                                                                filename)
                 else:
-                    col_info = "     - {0}\n".format(topic)
+                    col_info = "     - {0}\n".format(topic['title'])
 
                 col_info += "\n       | Readings:\n"
-                col_info += "       | *{0}*".format(subtopics['readings'][i])
+                col_info += "       | *{0}*".format(topic['readings'])
                 print("{0}".format(col_info), file=fh)
 
                 # Notebook column
                 col_info = "     -\n"
-                for nb in notebook_files.get(topic, ""):
+                for nb in notebook_files.get(topic['title'], ""):
                     nb_base = nb['url'][:-6]
                     col_info += "       | {0}\n".format(nb['name'][:-6])
-                    col_info += "       | `[view] <{0}>`__ `[ipynb] <{1}>`__ `[py] <{2}>`__\n\n".format(nb_base + ".html", 
-                                                                                                        nb_base + ".ipynb", 
+                    col_info += "       | `[view] <{0}>`__ `[ipynb] <{1}>`__ `[py] <{2}>`__\n\n".format(nb_base + ".html",
+                                                                                                        nb_base + ".ipynb",
                                                                                                         nb_base + ".py")
 
                 print("{0}\n".format(col_info), end="", file=fh)
@@ -90,7 +89,7 @@ def main():
                     # Links column
                 try:
                     col_info = "     -\n"
-                    for link in subtopics["links"][i]:
+                    for link in topic["links"]:
                         col_info += "       | `{0} <{1}>`__\n\n".format(link['title'], link['url'])
                     print("{0}".format(col_info), file=fh)
                 except KeyError:

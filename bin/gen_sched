@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/Users/res/.virtualenvs/coursetools/bin/python3.6
 
 from enum import Enum
 from datetime import datetime, time, timedelta
@@ -14,6 +14,28 @@ access.login()
 courses = access.course_query(config['registrar']['term'])
 access.logout()
 
+def collate_topics(lectures):
+    topics = ()
+
+    for lecture in lectures:
+        freqs = {}
+        for topic in lecture:
+            freqs[topic['title']] = topic['frequency']
+
+        stop = False
+        while not stop:
+            sub_topics = ()
+            for topic in lecture:
+                if freqs[topic['title']] > 0:
+                    sub_topics += (topic['title'],)
+                    freqs[topic['title']] -= 1
+                elif sum(freqs.values()) == 0:
+                    stop = True
+
+            if sub_topics:
+                topics += (sub_topics,)
+    return topics
+
 """
 The following configuration variables need to be placed in the
 config.yaml.
@@ -25,48 +47,34 @@ ws_days = set()   # Make sure all repeats are removed
 #     workshop_day_codes = courses[workshop_crn]['days']
 #     for day in workshop_day_codes:
 #         ws_days.add(Weekday(day))
-ws_days = tuple({Weekday(day)
-                 for workshop_crn in config['registrar']['workshops']
-                 if workshop_crn in courses
-                 for day in courses[workshop_crn]['days']})
-
-ws_times = {}
-for ws in ws_days:
-    ws_times[ws] = [int(courses[workshop_crn]['time'].split('-')[-1])
-                 for workshop_crn in config['registrar']['workshops']
-                 if Weekday(courses[workshop_crn]['days']) == ws]
-
-ws_lec_conflict = False
-for crn in config['registrar']['crn']:
-    d = Weekday(courses[crn]['days'][-1])
-    t = int(courses[crn]['time'].split('-')[-1])
-    if d in ws_days:
-          ws_lec_conflict = t < max(ws_times[d])
+ws_days = tuple(sorted({Weekday(day)
+                        for workshop_crn in config['registrar']['workshops']
+                        if workshop_crn in courses
+                        for day in courses[workshop_crn]['days']}))
 
 session_start = config['registrar']['session_start']
 session_end = config['registrar']['session_end']
 breaks = config['gen_sched']['breaks']
 
-workshop_day = Weekday.Sunday\
-    if not ws_days or Weekday.Sunday in ws_days and min(ws_days) == 0\
-    else min(ws_days)
+last_lecture_day = -1
+for crn in config['registrar']['crn']:
+    for day in list(courses[crn]['days']):
+        if Weekday(day) > last_lecture_day:
+            last_lecture_day = Weekday(day)
+
+workshop_day = [d for d in ws_days if d > last_lecture_day][0]
 
 # Multiple topics per lecture can be placed in a tuple.
-topics = tuple([lecture['title']
-                for lecture in config['gen_sched']['lectures']
-                for t in range(lecture['frequency'])])
+#topics = tuple(tuple(topic['title']
+#                     for topic in lecture)
+#               for lecture in config['gen_sched']['lectures'])
+topics = collate_topics(config['gen_sched']['lectures'])
 
-workshops = []
-for topic in config['gen_sched']['lectures']:
-    if isinstance(topic['title'], tuple):
-        for i,_topic in enumerate(topic['title']):
-            if topic['graded'][i]:
-                workshops.append(_topic)
-    else:
-        if topic['graded']:
-            workshops.append(topic['title'])
+workshops = tuple(topic['title']
+                  for lecture in config['gen_sched']['lectures']
+                  for topic in lecture
+                  if topic['graded'])
 
-workshops = tuple(workshops)
 quizzes = workshops
 
 if len(config['gen_sched']['labs']) > 1:
@@ -255,7 +263,6 @@ def gen_lectures(day, weekday, lecture_num, break_name, break_dates,
             if not isinstance(topics[lecture_num], tuple):
                 agenda += " " + topics[lecture_num]
             else:
-                t = topics[lecture_num]
                 n = ()
                 for x in topics[lecture_num]:
                     try:
@@ -305,6 +312,8 @@ def gen_workshop(day, weekday, break_name, break_len, workshop_num,
           # not is_topic(topics[lecture_num + 1], workshops)) or
           is_topic(workshops[workshop_num]) == topics[lecture_num]):
         print_agenda(day, "No workshop cycle this week.")
+    elif week == 1 and is_topic(workshops[workshop_num]):
+        pass
     elif week < final_week and is_topic(workshops[workshop_num]):
         agenda = "Workshop Cycle "
         t_list = []
@@ -346,34 +355,27 @@ def gen_quizzes(day, weekday, break_name, break_len, quiz_num,
         pass
     elif not class_state.is_classday():
         pass
-    elif weekday in ws_days and \
-        weekday == class_state.section_enum()[-1] and \
-        ws_lec_conflict:
-        pass
     elif not class_state.week_finished():
         pass
     elif (break_name and break_len > (round(len(ws_days)*0.3))):
         print_agenda(day, "No quiz this week.")
-    elif not is_topic(recent_topic, quizzes) or\
-        exams.get(day, (False, False))[1]:
+    elif (not is_topic(recent_topic, quizzes) or
+          exams.get(day, (False, False))[1]):
         print_agenda(day, "No quiz this week.")
-    elif class_state.cancel_threshold() and\
-        topics.count(topics[topic_num]) > class_state.len() or\
-        not class_state.get_topics():
+    elif (class_state.cancel_threshold() and
+          topics.count(topics[topic_num]) > class_state.len() or
+          not class_state.get_topics()):
         print_agenda(day, "No quiz this week.")
-    #elif week > 1 and week < final_week:
     elif week > 1:
-        if ws_lec_conflict:
-            class_state = states_recent_topic()
         if len(config['registrar']['crn']) > 1:
             print_agenda(day,
-                         "Quiz {0} *({1} section)*: {2}"
+                         "Quiz {0} *({1} section)* *(in workshop)*: {2}"
                          .format(quiz_num + 1,
                                  class_state.section(),
                                  quizzes[quiz_num]))
         else:
              print_agenda(day,
-                          "Quiz {0}: {2}".format(quiz_num + 1,
+                          "Quiz {0} *(in workshop)*: {2}".format(quiz_num + 1,
                                                  class_state.section(),
                                                  quizzes[quiz_num]))
 
@@ -440,6 +442,11 @@ def gen_labs(day, weekday, break_dates, break_len, labs_num,
         for i in range(labs_num, topic_num):
             t_list.append("{0}".format(l_num + 1))
             l_num += 1
+
+        if not t_list:
+            print_agenda(day, "No lab assigned this week.")
+            return labs_num
+
         agenda += ", ".join(t_list) + " Assigned: "
 
         t_list.clear()
@@ -448,13 +455,17 @@ def gen_labs(day, weekday, break_dates, break_len, labs_num,
             t_list.append("{0}".format(labs[i]))
 
         for i, j in enumerate(range(labs_num, topic_num)):
-            lect = config['gen_sched']['lectures'][j]
-            pos = lect['title'].index(t_list[i])
-            due_day_delta = lect['due_day_delta'][pos]
-            dump_agenda("labs", 
+            for lecture in config['gen_sched']['lectures']:
+
+                for topic in lecture:
+                    if t_list[i] == topic['title']:
+                        due_day_delta = topic['due_date_delta']
+                        break
+
+            dump_agenda("labs",
                         "lab{0}".format(j + 1),
                         day,
-                        "Lab Assignment #{0}".format(j + 1),
+                        "Lab Assignment #{0:02d}".format(j + 1),
                         t_list[i], due_day_delta)
 
         labs_num += (topic_num - labs_num)

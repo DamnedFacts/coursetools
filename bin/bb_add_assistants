@@ -12,9 +12,9 @@ wsl = config['admin']['workshop_leaders'].values()
 tas = config['admin']['lab_TAs'].values()
 gta = config['admin']['grad_TAs']
 
-helpers = [w for w in wsl if w['netid']] + \
-    [t for sublist in tas for t in sublist if t['netid']] + \
-    [g for g in gta if g['netid']]
+helpers = ([w for w in wsl if w and 'netid' in w] +
+           [t for sublist in tas if sublist for t in sublist if t and 'netid' in t] +
+           [g for g in gta if g and 'netid' in g])
 
 for helper in helpers:
     bb.add_user(helper['netid'], "T")

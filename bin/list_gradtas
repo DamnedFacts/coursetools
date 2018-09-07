@@ -22,6 +22,10 @@ def rst_table_borders(cols):
 
 
 def rst_out(output_file, gtas):
+    if not gtas:
+        print("*There are no graduate TAs assigned to this course.*", file=output_file)
+        return
+
     cat = ['name', 'email', 'office', 'hours']
     maxes = [0] * len(cat)
 

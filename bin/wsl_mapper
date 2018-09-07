@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from courselib.weekday import Weekday
 from courselib.instructor_access import InstructorAccess
 from courselib.config import config
 import os
@@ -44,10 +45,6 @@ def output_rst(courses, crn, leader, students, output, config):
     print("{s:{col3}s}".format(s=joined, col3=col3_w+1),
           file=output)
 
-    if crn != config['registrar']['workshops'][-1]:
-        print("{} {} {}".format("-"*col1_w, "-"*col2_w, "-"*col3_w),
-              file=output)
-
 
 def main():
     term = config['registrar']['term']
@@ -82,27 +79,42 @@ def main():
                   file=output)
             return
 
-        for ws_crn in config['registrar']['workshops']:
-            if not ws_crn:
+        wkshps = {}
+
+        for crn in config['registrar']['workshops']:
+            if not crn or crn not in courses:
+                print("Workshop CRN {0} not found. Skipping…".format(crn))
                 continue
 
-            if ws_crn not in courses:
-                print("Workshop CRN {0} not found. Skipping…".format(ws_crn))
+            val = (crn, courses[crn]['time'].split("-")[0])
+            key = Weekday(courses[crn]['days'])
+
+            if key not in wkshps:
+                wkshps[key] = [val]
+            else:
+                wkshps[key].append(val)
+
+        for wd in Weekday:
+            if wd not in wkshps:
                 continue
 
-            wsl = config['admin']['workshop_leaders'][ws_crn]
+            wkshps[wd].sort(key=lambda x: x[1])
 
-            students_ws = access.roster_query(term, ws_crn)[ws_crn]
-            ws_keys = set(students_ws.keys())
-            for key in (ws_keys - lecture_keys):
-                print("Student {0} is in ws {1} but not in lecture section."
-                      .format(students_ws[key]['name'], ws_crn))
-                del students_ws[key]
+            for crn, _ in wkshps[wd]:
+                wsl = config['admin']['workshop_leaders'][crn]
+                students_ws = access.roster_query(term, crn)[crn]
+                ws_keys = set(students_ws.keys())
 
-            output_rst(courses, ws_crn, wsl, students_ws, output, config)
+                for key in (ws_keys - lecture_keys):
+                    print("Student {0} is in ws {1} but not in lecture section."
+                          .format(students_ws[key]['name'], crn))
+                    del students_ws[key]
+
+                output_rst(courses, crn, wsl, students_ws, output, config)
 
         print("{} {} {}".format("="*col1_w, "="*col2_w, "="*col3_w),
               file=output)
         access.logout()
 
-main()
+if __name__ == '__main__':
+    main()

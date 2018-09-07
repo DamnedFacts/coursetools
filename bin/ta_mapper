@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from courselib.weekday import Weekday
 from courselib.instructor_access import InstructorAccess
 from courselib.config import config
 import os
@@ -65,13 +66,9 @@ def output_rst(lab, lab_tas, students, output):
         print("{s:{col2}s}".format(s=sect_range, col2=col2_w+1), end="",
               file=output)
 
-        joined = " ".join([ta['name'], ta['email']])
+        joined = ta['name'] + " " + ta['email']
         print("{s:{col3}s}".format(s=joined, col3=col3_w+1),
               file=output)
-
-        if i == (len(lab_tas) - 1):
-            print("{} {} {}".format("-"*col1_w, "-"*col2_w, "-"*col3_w),
-                  file=output)
 
         pos += chunk
         rem = len(names) - pos
@@ -94,6 +91,7 @@ def main():
     for lecture_crn in config['registrar']['crn']:
         students_dict = access.roster_query(term, lecture_crn)[lecture_crn]
         students_lecture = {**students_lecture, **students_dict}
+
     lecture_keys = set(students_lecture.keys())
 
     with open(config["ta_mapper"]["output_file"], 'w') as output:
@@ -108,39 +106,50 @@ def main():
                                    col3=col3_w), file=output)
         output.write(table_str)
 
-        students_lists_lecture = access.roster_query(term, lecture_crn)
-        students_lecture = {}
-
-        if config['registrar']['labs'][0] is None:
+        if config['admin']['lab_TAs'] is None:
             output.write(table_str)
             print("\n*There are no TAs for this course.*", file=output)
             return
 
-        for lab_crn in config['registrar']['labs']:
-            if not lab_crn:
-                continue
+        labs = {}
 
-            if lab_crn not in courses:
+        # Lab TAs might be assigned to a summer course without a lab section,
+        # we allow the lecture CRN to be a "lab".
+        for crn in config['admin']['lab_TAs']:
+            if not crn or crn not in courses:
                 print("Lab session CRN {0} not found. Skipping…"
-                      .format(lab_crn))
+                      .format(crn))
                 continue
 
-            tas = config['admin']['lab_TAs'][lab_crn]
+            val = (crn, courses[crn]['time'].split("-")[0])
+            key = Weekday(list(courses[crn]['days'])[0])
 
-            students_lab = access.roster_query(term, lab_crn)[lab_crn]
-            lab_keys = set(students_lab.keys())
-            for key in (lab_keys - lecture_keys):
-                print("Student {0} is in lab {1} but not in lecture section."
-                      .format(students_lab[key]['name'], lab_crn))
-                del students_lab[key]
+            if key not in labs:
+                labs[key] = [val]
+            else:
+                labs[key].append(val)
 
-            output_rst(courses[lab_crn], tas, students_lab, output)
+        for wd in Weekday:
+            if wd not in labs:
+                continue
 
-        # Little hackey hack to remove the last '---' border from the TA
-        # listing above.
-        output.seek(output.tell()-len(table_str))
+            labs[wd].sort(key=lambda x: x[1])
+
+            for crn, _ in labs[wd]:
+                tas = config['admin']['lab_TAs'][crn]
+                students_lab = access.roster_query(term, crn)[crn]
+                lab_keys = set(students_lab.keys())
+
+                for key in (lab_keys - lecture_keys):
+                    print("Student {0} is in lab {1} but not in lecture section."
+                          .format(students_lab[key]['name'], crn))
+                    del students_lab[key]
+
+                output_rst(courses[crn], tas, students_lab, output)
+
         output.write(table_str)
 
     access.logout()
 
-main()
+if __name__ == '__main__':
+    main()

@@ -61,7 +61,7 @@ for label, item in config['admin']['due_dates']['labs'].items():
                if val['title'] == item['title']]
 
     if not item_id:
-        print("No Blackboard item for assignment {0}".format(item['description']))
+        print("No Blackboard item for assignment {0} ({1})".format(item['title'], item['description']))
         continue
 
     bb.manage_assignment(parent, item_id[0], list(assign.items()))

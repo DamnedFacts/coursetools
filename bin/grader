@@ -65,6 +65,8 @@ def parse_cmdline():
                               help='course scores are curved')
 
     output_group = parser.add_mutually_exclusive_group(required=True)
+    output_group.add_argument('--test', dest='test', action='store_true',
+                              help='course scores are succintly written to the terminal.')
     output_group.add_argument('--csv', dest='csv', action='store_true',
                               help='course scores are written to a CSV file.')
     output_group.add_argument('--access', dest='access',
@@ -79,10 +81,10 @@ def parse_cmdline():
 
 
 def grades_to_file(grade_data):
-    grade_data.to_csv("final_grades.csv")
+    grade_data.to_csv("grades.csv")
 
 
-def grades_to_access(grade_data, crn, term, id_filter=None):
+def grades_to_access(grade_data, crn, term, id_filter=None, test=False):
     # TODO 
     # Option to read gradebook CSV file directly from the network instead 
     # of saving it first to a file.
@@ -93,40 +95,51 @@ def grades_to_access(grade_data, crn, term, id_filter=None):
     # Grade validation probably should be a POST request, instead of a GET with
     # query parameters.
     #
-    ia = InstructorAccess()
-    ia.login()
+    if not test:
+        # FIXME: coursetools should look for an enviroment variable for
+        # directory base.
+        ia = InstructorAccess()
+        ia.login()
+
     for row_i, row in grade_data.iterrows():
         if isinstance(id_filter, list) and row['Username'] not in id_filter:
             continue
 
         try:
-            ia.validate_grade(crn, term,
-                              row['Student ID'],
-                              row['Final Course Letter Grade'])
-            print("Validating and updating grade for {0}, {1} ({2}): {3}."\
+            print("Validating and updating grade for {0}, {1} ({2}): {3}"\
                   .format(row['Last Name'],
                           row['First Name'],
                           row['Student ID'],
                           row['Final Course Letter Grade']))
+
+            if not test:
+                # FIXME: Avoid setting a grade for auditing students, clear it
+                # if necessary.
+                ia.validate_grade(crn, term,
+                                  str(row['Student ID']),
+                                  row['Final Course Letter Grade'])
+                sleep(1)
         except ConnectionError:
-            print("Failed validating and updating grade for {0}, {1} ({2})."\
+            print("Failed validating and updating grade for {0}, {1} ({2})"\
                   .format(row['Last Name'],
                           row['First Name'],
                           row['Student ID']))
-        sleep(1)
 
 
 def main():
     args = parse_cmdline()
 
-    gradebook = pd.read_csv(args.csv_filename[0],
-                            sep='\t',
-                            encoding="utf-16")
+    try:
+        gradebook = pd.read_csv(args.csv_filename[0], sep='\t',
+                                encoding="utf-16")
+    except UnicodeError:
+        gradebook = pd.read_csv(args.csv_filename[0],
+                                sep='\t',
+                                encoding="ascii")
 
     # Convert student ID column to int data type.
     gradebook['Student ID'].fillna(0, inplace=True)
     gradebook[['Student ID']] = gradebook[['Student ID']].astype(int)
-
 
     grade_score_df = gradebook.filter(regex=(col_score_re)).apply(p2f)
     grade_letter_df = gradebook.filter(regex=(col_letter_re))
@@ -134,18 +147,28 @@ def main():
     grade_score_df.columns = [col_score]
     grade_letter_df.columns = [col_letter]
     grade_code_df.columns = [col_code]
-    final_grades = pd.concat([gradebook[['Last Name', 'First Name',
-                                         'Student ID', 'Username']],
-                              grade_code_df,
-                              grade_score_df,
-                              grade_letter_df],
-                             axis='columns')
+    grade_sheet = pd.concat([gradebook[['Last Name', 'First Name',
+                                        'Student ID', 'Username']],
+                             grade_code_df,
+                             grade_score_df,
+                             grade_letter_df],
+                            axis='columns')
 
-    final_grades[col_code].fillna("", inplace=True)
+    grade_sheet[col_code].fillna("", inplace=True)
 
     gs_letter, gs_upper, gs_lower = get_grade_scale()
 
-    for row_i, row in final_grades.iterrows():
+    for row_i, row in grade_sheet.iterrows():
+        if row[col_code] == "AUD" or pd.isnull(row[col_score]):
+            # Student is auditing
+            grade_sheet.loc[row_i, col_score] = 0.0
+            grade_sheet.loc[row_i, col_letter] = ""
+            continue
+        elif row[col_code] == "I":
+            # If the column contains "I" or "N" grading code to override
+            # calculated grade letter.
+            grade_sheet.loc[row_i, col_letter] = row[col_code]
+            continue
 
         if args.trunc:
             # This truncates the float value to 4 digits,
@@ -176,22 +199,20 @@ def main():
 
         # Keep as error checking to see if grades match that in CSV file
         if grade_letter != gs_letter[idx].values[0]:
+            print("Grade letter improved from original record for:")
             print(row, gs_letter[idx].values[0], "\n")
 
-        final_grades.loc[row_i, col_score] = grade_score
-        final_grades.loc[row_i, col_letter] = gs_letter[idx].values[0]
-
-        if row[col_code]:
-            # If the column contains "I" or "N" grading code to override
-            # calculated grade letter.
-            final_grades.loc[row_i, col_letter] = row[col_code]
+        grade_sheet.loc[row_i, col_score] = grade_score
+        grade_sheet.loc[row_i, col_letter] = gs_letter[idx].values[0]
 
     if args.csv:
-        grades_to_file(final_grades)
-    elif args.access:
+        grades_to_file(grade_sheet)
+    elif args.access or args.test:
         crn = config['registrar']['crn'][0]
         term = config['registrar']['term']
-        grades_to_access(final_grades, crn, term, id_filter=args.ids)
+        grades_to_access(grade_sheet, crn, term, id_filter=args.ids,
+                         test=True if args.test else False)
 
 
-main()
+if __name__ == '__main__':
+    main()

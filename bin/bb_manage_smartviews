@@ -92,38 +92,41 @@ def main():
         students_lecture = {**students_lecture, **students_dict}
     lecture_keys = set(students_lecture.keys())
 
-    for lab_crn in config['registrar']['labs']:
-        if not lab_crn:
+    for crn in config['admin']['lab_TAs']:
+        if not crn:
             continue
 
-        if lab_crn not in courses:
-            print("Lab session CRN {0} not found. Skipping…".format(lab_crn))
+        if crn not in courses:
+            print("Lab session CRN {0} not found. Skipping…".format(crn))
             continue
 
-        tas = config['admin']['lab_TAs'][lab_crn]
+        tas = config['admin']['lab_TAs'][crn]
+        if not tas:
+            continue
 
-        students_lab = access.roster_query(term, lab_crn)[lab_crn]
+        students_lab = access.roster_query(term, crn)[crn]
         lab_keys = set(students_lab.keys())
         for key in (lab_keys - lecture_keys):
             print("Student {0} is in lab {1} but not in lecture section."
-                  .format(students_lab[key]['name'], lab_crn))
+                  .format(students_lab[key]['name'], crn))
             del students_lab[key]
 
-        names_dict = ta_partition(courses[lab_crn], tas, students_lab)
+        names_dict = ta_partition(courses[crn], tas, students_lab)
         courses = access.course_query(term)
         for name, vals in names_dict.items():
             print("Creating Smart View for lab TA: {0}…".format(name))
             bb.create_smartview("Lab: {0}".format(name),
                                 "{2} {3} {4} {5} ({0}) [CRN {1}]".format(
                                     vals['desc'],
-                                    lab_crn,
-                                    courses[lab_crn]['bldg'],
-                                    courses[lab_crn]['days'],
-                                    courses[lab_crn]['room'],
-                                    courses[lab_crn]['time']),
+                                    crn,
+                                    courses[crn]['bldg'],
+                                    courses[crn]['days'],
+                                    courses[crn]['room'],
+                                    courses[crn]['time']),
                                 vals['students'],
                                 ['Assignment', 'AssignmentExtraCredit',
-                                 'Project', 'ProjectExtraCredit'], favorite=True)
+                                 'Project', 'ProjectExtraCredit'],
+                                favorite=True)
 
     for ws_crn in config['registrar']['workshops']:
         if not ws_crn:

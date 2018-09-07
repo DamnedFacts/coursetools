@@ -307,8 +307,32 @@ class InstructorAccess:
                                                   "yearTerm": term.replace("_",
                                                                            " ")})
             url = config['roster']['access_grade_course_url'] + query
-            response = self.__request('head', url)
-            self.grading = {'crn': crn, 'term': term}
+            response = self.__request('get', url)
+
+            soup = BeautifulSoup(response.text, "html.parser")
+            course_table = soup.find("table", {"class": "rosterStudentDisplay"})
+            rows = course_table.find_all('tr')
+            student_table = {}
+            for row in rows:
+                cols = row.find_all('td')
+                if len(cols) > 1:
+                    sid = cols[1].text
+                    student_input = cols[6].find("input", {"name": f"grade_{sid}"})
+                    student_table[cols[1].text] = student_input.get('value') if student_input else None
+
+            self.grading = {'crn': crn, 'term': term, 'student_table': student_table}
+
+        if student_id not in self.grading['student_table']:
+            print(f"    Warning Student ID {student_id} not found on Instructor Access, ignoring.")
+            return
+
+        if self.grading['student_table'][student_id] is None:
+            print(f"    Warning: Student ID {student_id} does not allow grade entry, ignoring.")
+            return
+
+        if self.grading['student_table'][student_id] != grade_letter and self.grading['student_table'][student_id]:
+            print(f"    Warning: Student ID {student_id} grade changed from "
+                  f"'{self.grading['student_table'][student_id]}' to '{grade_letter}'.")
 
         query = "?" + urllib.parse.urlencode({f"grade_{student_id}": grade_letter,
                                               "urid": student_id})
